@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Game 2D :D</title> 
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+      font-family: Arial, sans-serif;
+    }
+    canvas {
+      display: block;
+      background-color: lightblue;
+    }
+    .control-panel {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .control-panel label {
+      margin-bottom: 5px;
+    }
+    .color-picker {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+  </style>
+</head>
+<body>
+  <!-- UI elements -->
+  <div class="control-panel">
+    <div class="color-picker">
+      <label for="colorPicker">Cube Color:</label>
+      <input type="color" id="colorPicker" value="#ff0000">
+    </div>
+    <div class="color-picker">
+      <label for="platformColorPicker">Platform Color:</label>
+      <input type="color" id="platformColorPicker" value="#0000ff">
+    </div>
+    <div class="color-picker">
+      <label for="spikeColorPicker">Spike Color:</label>
+      <input type="color" id="spikeColorPicker" value="#ff0000">
+    </div>
+    <div class="color-picker">
+      <label for="groundColorPicker">Ground Color:</label>
+      <input type="color" id="groundColorPicker" value="#00ff00">
+    </div>
+    <button id="modeToggle">Toggle Edit Mode</button>
+    <button id="deleteToggle">Toggle Delete Mode</button>
+    <button id="saveButton">Save Level</button>
+    <button id="loadButton">Load Level</button>
+    <button id="newLevelButton">New Level</button>
+    <input type="color" id="outlineColorPicker" value="#000000">
+    <select id="blockSelector">
+      <option value="platform">Platform</option>
+      <option value="spike">Spike</option>
+    </select>
+    <select id="saveSlotSelector">
+      <option value="slot1">Save Slot 1</option>
+      <option value="slot2">Save Slot 2</option>
+      <option value="slot3">Save Slot 3</option>
+    </select>
+    <div id="message">You can change the map size by zooming out/in, then pressing Ctrl + F5 or refreshing the page.</div>
+  </div>
+  <canvas id="gameCanvas"></canvas>
+
+  <script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+
+    let editMode = false;
+    let deleteMode = false;
+    let platforms = [{ x: 0, y: canvas.height - 50, width: canvas.width, height: 50, color: '#00ff00' }];
+    let spikes = [];
+    const spawn = { x: 50, y: canvas.height - 100 };
+
+    const player = {
+      x: spawn.x,
+      y: spawn.y,
+      width: 50,
+      height: 50,
+      color: '#ff0000',
+      outlineColor: '#000000',
+      outlineWidth: 2,
+      velocityX: 0,
+      velocityY: 0,
+      speed: 5,
+      gravity: 0.8,
+      isDragging: false,
+      isOnGround: false,
+      jumpForce: -15,
+    };
+
+    let currentBlockType = 'platform';
+    let keys = {};
+    let mouseX = 0, mouseY = 0;
+    let lastMouseX = 0, lastMouseY = 0;
+    let dragVelocityX = 0, dragVelocityY = 0;
+
+    const platformColorPicker = document.getElementById('platformColorPicker');
+    const spikeColorPicker = document.getElementById('spikeColorPicker');
+    const groundColorPicker = document.getElementById('groundColorPicker');
+    let platformColor = platformColorPicker.value;
+    let spikeColor = spikeColorPicker.value;
+    let groundColor = groundColorPicker.value;
+
+    canvas.addEventListener('mousemove', (e) => {
+      mouseX = e.clientX;
+      mouseY = e.clientY;
+
+      if (player.isDragging) {
+        dragVelocityX = mouseX - lastMouseX;
+        dragVelocityY = mouseY - lastMouseY;
+        player.x = mouseX - player.width / 2;
+        player.y = mouseY - player.height / 2;
+      }
+
+      lastMouseX = mouseX;
+      lastMouseY = mouseY;
+    });
+
+    canvas.addEventListener('mousedown', (e) => {
+      if (editMode) {
+        if (deleteMode) {
+          if (e.button === 0) { // Left click to delete block
+            platforms = platforms.filter(p => !(
+              mouseX > p.x && mouseX < p.x + p.width &&
+              mouseY > p.y && mouseY < p.y + p.height
+            ));
+            spikes = spikes.filter(s => !(
+              mouseX > s.x && mouseX < s.x + s.width &&
+              mouseY > s.y && mouseY < s.y + s.height
+            ));
+          }
+        } else {
+          if (e.button === 0) { // Left click to add block
+            if (currentBlockType === 'platform') {
+              platforms.push({ x: mouseX, y: mouseY, width: 100, height: 20, color: platformColor });
+            } else if (currentBlockType === 'spike') {
+              spikes.push({ x: mouseX, y: mouseY, width: 40, height: 40, color: spikeColor });
+            }
+          }
+        }
+      } else {
+        if (mouseX > player.x && mouseX < player.x + player.width &&
+            mouseY > player.y && mouseY < player.y + player.height) {
+          player.isDragging = true;
+          player.velocityX = 0;
+          player.velocityY = 0;
+        }
+      }
+    });
+
+    canvas.addEventListener('mouseup', () => {
+      if (!editMode) {
+        player.isDragging = false;
+        player.velocityX = dragVelocityX / 2;
+        player.velocityY = dragVelocityY / 2;
+      }
+    });
+
+    window.addEventListener('keydown', (e) => {
+      keys[e.code] = true;
+
+      if ((e.code === 'Space' || e.code === 'KeyW') && player.isOnGround) {
+        player.velocityY = player.jumpForce;
+        player.isOnGround = false;
+      }
+    });
+
+    window.addEventListener('keyup', (e) => {
+      keys[e.code] = false;
+    });
+
+    const colorPicker = document.getElementById('colorPicker');
+    colorPicker.addEventListener('input', (e) => {
+      player.color = e.target.value;
+    });
+
+    const outlineColorPicker = document.getElementById('outlineColorPicker');
+    outlineColorPicker.addEventListener('input', (e) => {
+      player.outlineColor = e.target.value;
+    });
+
+    const blockSelector = document.getElementById('blockSelector');
+    blockSelector.addEventListener('change', (e) => {
+      currentBlockType = e.target.value;
+    });
+
+    platformColorPicker.addEventListener('input', (e) => {
+      platformColor = e.target.value;
+    });
+
+    spikeColorPicker.addEventListener('input', (e) => {
+      spikeColor = e.target.value;
+    });
+
+    groundColorPicker.addEventListener('input', (e) => {
+      groundColor = e.target.value;
+      platforms.forEach(platform => {
+        if (platform.y === canvas.height - 50) {
+          platform.color = groundColor;
+        }
+      });
+    });
+
+    const saveSlotSelector = document.getElementById('saveSlotSelector');
+    function saveLevel(slot) {
+      const data = {
+        platforms,
+        spikes,
+        player: {
+          x: player.x,
+          y: player.y,
+          color: player.color,
+          outlineColor: player.outlineColor,
+          outlineWidth: player.outlineWidth
+        }
+      };
+      localStorage.setItem(slot, JSON.stringify(data));
+    }
+
+    function loadLevel(slot) {
+      const data = JSON.parse(localStorage.getItem(slot));
+      if (data) {
+        platforms = data.platforms;
+        spikes = data.spikes;
+        player.x = data.player.x;
+        player.y = data.player.y;
+        player.color = data.player.color;
+        player.outlineColor = data.player.outlineColor;
+        player.outlineWidth = data.player.outlineWidth;
+      }
+    }
+
+    document.getElementById('modeToggle').addEventListener('click', () => {
+      editMode = !editMode;
+      document.getElementById('modeToggle').textContent = editMode ? 'Switch to Play Mode' : 'Switch to Edit Mode';
+    });
+
+    document.getElementById('deleteToggle').addEventListener('click', () => {
+      deleteMode = !deleteMode;
+      document.getElementById('deleteToggle').textContent = deleteMode ? 'Switch to Add Mode' : 'Switch to Delete Mode';
+    });
+
+    document.getElementById('saveButton').addEventListener('click', () => {
+      saveLevel(saveSlotSelector.value);
+    });
+
+    document.getElementById('loadButton').addEventListener('click', () => {
+      loadLevel(saveSlotSelector.value);
+    });
+
+    document.getElementById('newLevelButton').addEventListener('click', () => {
+      platforms = [{ x: 0, y: canvas.height - 50, width: canvas.width, height: 50, color: groundColor }];
+      spikes = [];
+      player.x = spawn.x;
+      player.y = spawn.y;
+      player.velocityX = 0;
+      player.velocityY = 0;
+    });
+
+    function drawSpike(x, y, width, height, color) {
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x + width / 2, y - height); // Top point
+      ctx.lineTo(x + width, y);
+      ctx.closePath();
+      ctx.fillStyle = color;
+      ctx.fill();
+      ctx.strokeStyle = 'black'; // Outline color
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+
+    function update() {
+      if (!player.isDragging) {
+        player.velocityY += player.gravity;
+        player.y += player.velocityY;
+        player.x += player.velocityX;
+        player.velocityX *= 0.98;
+
+        if (keys['ArrowRight'] || keys['KeyD']) {
+          player.x += player.speed;
+        }
+        if (keys['ArrowLeft'] || keys['KeyA']) {
+          player.x -= player.speed;
+        }
+
+        player.isOnGround = false;
+        for (const platform of platforms) {
+          if (player.x < platform.x + platform.width &&
+              player.x + player.width > platform.x &&
+              player.y + player.height > platform.y &&
+              player.y + player.height <= platform.y + player.velocityY) {
+            player.y = platform.y - player.height;
+            player.velocityY = 0;
+            player.isOnGround = true;
+            break;
+          }
+        }
+
+        for (const spike of spikes) {
+          if (player.x < spike.x + spike.width &&
+              player.x + player.width > spike.x &&
+              player.y < spike.y + spike.height &&
+              player.y + player.height > spike.y) {
+            player.x = spawn.x;
+            player.y = spawn.y;
+            player.velocityX = 0;
+            player.velocityY = 0;
+          }
+        }
+      }
+
+      if (player.y < 0) player.y = 0;
+      if (player.x < 0) player.x = 0;
+      if (player.x + player.width > canvas.width) player.x = canvas.width - player.width;
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      platforms.forEach(platform => {
+        ctx.fillStyle = platform.color;
+        ctx.fillRect(platform.x, platform.y, platform.width, platform.height);
+      });
+
+      spikes.forEach(spike => {
+        drawSpike(spike.x, spike.y, spike.width, spike.height, spike.color);
+      });
+
+      ctx.fillStyle = player.color;
+      ctx.strokeStyle = player.outlineColor;
+      ctx.lineWidth = player.outlineWidth;
+      ctx.fillRect(player.x, player.y, player.width, player.height);
+      ctx.strokeRect(player.x, player.y, player.width, player.height);
+
+      requestAnimationFrame(update);
+    }
+
+    update();
+  </script>
+</body>
+</html>
